@@ -22,6 +22,7 @@ EXPECTED = {
     "README.md": "user docs",
     "pyproject.toml": "packaging",
     "requirements.txt": "pinned deps",
+    "serverless-research.md": "serverless migration feasibility",
 }
 EXPECTED_DIRS = {"lingling": "the package", "tools": "dev tooling"}
 
