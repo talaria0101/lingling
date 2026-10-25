@@ -1,0 +1,66 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: audit (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+        exclude:
+          - os: macos-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # verify_probe_circuit drives a real lane, so it needs a tor binary.
+      # The auto-download path in lanes.py is Windows-only, hence the
+      # per-platform install and the LINGLING_TOR_EXE hand-off.
+      - name: install tor (ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tor
+          echo "LINGLING_TOR_EXE=$(command -v tor)" >> "$GITHUB_ENV"
+
+      - name: install tor (macos)
+        if: runner.os == 'macOS'
+        run: |
+          brew install tor
+          echo "LINGLING_TOR_EXE=$(command -v tor)" >> "$GITHUB_ENV"
+
+      - name: install tor (windows)
+        if: runner.os == 'Windows'
+        run: choco install tor -y
+        shell: pwsh
+
+      - name: LINGLING_TOR_EXE (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tor = "C:\ProgramData\chocolatey\bin\tor.exe"
+          if (-not (Test-Path $tor)) { $tor = (Get-Command tor).Source }
+          "LINGLING_TOR_EXE=$tor" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: install the package
+        run: python -m pip install .
+
+      # The audit is the project's only gate: repo hygiene, the invariant
+      # checks, and every suite under tools/verify/. It needs the package
+      # installed so the console script can run.
+      - name: audit
+        run: python tools/verify/verify_audit.py

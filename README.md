@@ -299,6 +299,30 @@ tools/probe/         tunnel latency probe (no quota)
 Runtime state (tor, lanes, proof log, local CA) lives in the per-user data
 directory — never in the package, never in your project folder.
 
+### Running the audit
+
+The audit is the whole gate: repo hygiene, the invariant checks, and every
+suite under `tools/verify/`. Run it from the repo root with the package
+installed:
+
+```
+python tools/verify/verify_audit.py
+```
+
+CI runs it on every push (`.github/workflows/verify.yml`) across Windows,
+macOS and Linux, on Python 3.11, 3.12 and 3.13.
+
+Every suite opens its fake upstream with `bind(("127.0.0.1", 0))`. A sandbox
+that refuses TCP `bind()` on loopback cannot run them at all, so
+`tools/verify/sitecustomize.py` translates that one pattern onto a unix
+listener. It is a no-op wherever TCP bind works, and it is opt-in:
+
+```
+PYTHONPATH=tools/verify python tools/verify/verify_audit.py
+```
+
+It substitutes the transport, so it does not measure TCP itself.
+
 Requirements: Python 3.11+, Windows/macOS/Linux, and `opencode` on your PATH.
 Runs entirely on your machine. The one outbound call that is not your own
 traffic is the update check above -- a GET for a small manifest (PyPI's index

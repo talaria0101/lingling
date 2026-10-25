@@ -1,4 +1,5 @@
 """A lane that is down must be brought back, not skipped forever"""
+import os
 import socket
 import sys
 import tempfile
@@ -144,6 +145,14 @@ def main():
           f"down events={len(downs)} -- the pane would be flooded")
 
     print("\n=== orphaned tor processes are reaped before any lane launches ===")
+    # _reap_orphans asks netstat -ano who holds the lane ports, which is a
+    # Windows command, so the sweep is Windows-only by design.  Asserting it
+    # on POSIX asserts behaviour the product does not have there.
+    if os.name != "nt":
+        print("  (not Windows -- pids_on_ports needs netstat -ano, so there is "
+              "no sweep to witness)")
+        _prune_section()
+        return _finish()
     # tor
     from lingling import netutil
     from lingling.lanes import TorManager
@@ -199,9 +208,12 @@ def main():
           lo >= Mgr.socks_base and hi <= Mgr.control_base + 4000,
           f"asked about {lo}..{hi} -- outside the lane range")
 
+    _prune_section()
+    return _finish()
+
+
+def _prune_section() -> None:
     print("\n=== lane dirs for lanes the pool does not have are pruned ===")
-    # lane dir
-    import tempfile
     from lingling.lanes import TorManager as _TM
 
     tmp = Path(tempfile.mkdtemp(prefix="lingling-prune-"))
@@ -310,6 +322,8 @@ def main():
           f"events={cut_msgs}")
     busy.active = 0
 
+
+def _finish() -> int:
     print()
     if FAILS:
         print("LANE REVIVE: FAILED")

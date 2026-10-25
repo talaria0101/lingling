@@ -1,4 +1,11 @@
-"""Windows Job Object with KILL_ON_JOB_CLOSE, so tor.exe dies with us."""
+"""Windows Job Object with KILL_ON_JOB_CLOSE, so tor.exe dies with us.
+
+The struct fields use the Windows ABI's fixed widths rather than ctypes'
+wintypes aliases.  wintypes.DWORD is c_ulong, which is 4 bytes on Windows and
+8 on POSIX, so a struct declared with it lays out differently per host and
+SetInformationJobObject is handed the wrong block.  Pointer-sized fields stay
+c_size_t, which is correct on both 32-bit and 64-bit Windows.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +18,10 @@ _JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
 _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 _PROCESS_SET_QUOTA = 0x0100
 _PROCESS_TERMINATE = 0x0001
+
+_DWORD = ctypes.c_uint32
+_BOOL = ctypes.c_int
+_LARGE_INTEGER = ctypes.c_longlong
 
 _job: int = 0
 _kernel32 = None
@@ -29,15 +40,15 @@ class _IO_COUNTERS(ctypes.Structure):
 
 class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
     _fields_ = [
-        ("PerProcessUserTimeLimit", wintypes.LARGE_INTEGER),
-        ("PerJobUserTimeLimit", wintypes.LARGE_INTEGER),
-        ("LimitFlags", wintypes.DWORD),
+        ("PerProcessUserTimeLimit", _LARGE_INTEGER),
+        ("PerJobUserTimeLimit", _LARGE_INTEGER),
+        ("LimitFlags", _DWORD),
         ("MinimumWorkingSetSize", ctypes.c_size_t),
         ("MaximumWorkingSetSize", ctypes.c_size_t),
-        ("ActiveProcessLimit", wintypes.DWORD),
+        ("ActiveProcessLimit", _DWORD),
         ("Affinity", ctypes.c_size_t),
-        ("PriorityClass", wintypes.DWORD),
-        ("SchedulingClass", wintypes.DWORD),
+        ("PriorityClass", _DWORD),
+        ("SchedulingClass", _DWORD),
     ]
 
 
@@ -60,14 +71,14 @@ def _kernel():
         k.CreateJobObjectW.restype = wintypes.HANDLE
         k.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
         k.OpenProcess.restype = wintypes.HANDLE
-        k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        k.AssignProcessToJobObject.restype = wintypes.BOOL
+        k.OpenProcess.argtypes = [_DWORD, _BOOL, _DWORD]
+        k.AssignProcessToJobObject.restype = _BOOL
         k.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
-        k.SetInformationJobObject.restype = wintypes.BOOL
+        k.SetInformationJobObject.restype = _BOOL
         k.SetInformationJobObject.argtypes = [
             wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
         ]
-        k.CloseHandle.restype = wintypes.BOOL
+        k.CloseHandle.restype = _BOOL
         k.CloseHandle.argtypes = [wintypes.HANDLE]
         _kernel32 = k
     return _kernel32

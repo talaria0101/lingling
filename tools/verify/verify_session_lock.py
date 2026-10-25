@@ -1,6 +1,7 @@
 """One kitchen: a second launcher is turned away while the first lives."""
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -63,13 +64,31 @@ def main() -> int:
     netutil.release_session_lock(str(d))
 
     print("\n=== a pid that gets reused by an unrelated process ===")
-    lock.write_text("4")
-    got = netutil.session_lock(str(d))
-    check("a live-but-unrelated pid still blocks (safe, rare, self-heals)",
-          got == 4, f"got={got}")
-    lock.unlink()
-    check("manual clearing works", netutil.session_lock(str(d)) is None)
-    netutil.release_session_lock(str(d))
+    # a live pid that is neither us nor lingling.  pid 4 is alive on a normal
+    # desktop and absent in a minimal container, so the hardcoded value made
+    # this section assert the opposite of what it names on such a host.
+    sleeper = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        lock.write_text(str(sleeper.pid))
+        got = netutil.session_lock(str(d))
+        check("a live-but-unrelated pid still blocks (safe, rare, self-heals)",
+              got == sleeper.pid, f"got={got}")
+        lock.unlink()
+        check("manual clearing works", netutil.session_lock(str(d)) is None)
+        netutil.release_session_lock(str(d))
+
+        # the same pid, once it is gone, is wreckage rather than a rival
+        lock.write_text(str(sleeper.pid))
+        sleeper.kill()
+        sleeper.wait()
+        check("a dead unrelated pid self-heals",
+              netutil.session_lock(str(d)) is None)
+        netutil.release_session_lock(str(d))
+    finally:
+        if sleeper.poll() is None:
+            sleeper.kill()
+            sleeper.wait()
 
     print("\n=== garbage contents are wreckage too ===")
     lock.write_text("not-a-pid")

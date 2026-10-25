@@ -25,6 +25,9 @@ EXPECTED = {
 }
 EXPECTED_DIRS = {"lingling": "the package", "tools": "dev tooling"}
 
+#: dot-directories that belong in the tree, with their reason
+EXPECTED_DOTS = {".github": "CI"}
+
 #: vocabulary
 STALE = ("identity", "walled", "burned_cycles", "report_burn", "_heal_burn",
          "avoid_countries", "_IDLE_GUARD", "spent-exits")
@@ -267,11 +270,15 @@ def main():
     unknown = []
     for entry in sorted(ROOT.iterdir()):
         if entry.name.startswith("."):
-            allowed = set(EXPECTED) | {".git"}
+            allowed = set(EXPECTED) | set(EXPECTED_DOTS) | {".git"}
             if entry.name not in allowed and not _git_ignored(entry):
                 unknown.append(entry.name)
             continue
         if entry.name == "__pycache__":
+            continue
+        #: anything git already ignores is local state, not an unexplained
+        #: file: pip and setuptools drop build/ and *.egg-info/ in the tree.
+        if _git_ignored(entry):
             continue
         if entry.is_dir():
             if entry.name not in EXPECTED_DIRS:
@@ -280,7 +287,10 @@ def main():
             unknown.append(entry.name)
     check("no unexplained file at the root", not unknown, ", ".join(unknown))
 
-    stray = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*.egg-info")]
+    #: setuptools drops this in the source tree on any build or install, and
+    #: .gitignore already keeps it out of git, so it is not stray.
+    stray = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*.egg-info")
+             if not _git_ignored(p)]
     check("no build metadata in the tree", not stray, f"{len(stray)} dirs")
 
     print("\n=== git will not carry local state ===")
